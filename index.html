@@ -639,6 +639,19 @@
                 font-size: 16px;
             }
         }
+        /* Franja inferior vino/verde oscuro */
+#bottomStripe {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, var(--wine-medium), var(--forest-dark), var(--wine-dark));
+    z-index: 50;
+    opacity: 0.6;
+    pointer-events: none; /* No interfiere con clics */
+}
+
     </style>
 </head>
 <body>
@@ -889,17 +902,7 @@
     pomodoroFocus = store.state.pomodoro.focusDuration; pomodoroBreak = store.state.pomodoro.breakDuration; pomodoroPhase = store.state.pomodoro.currentPhase; pomodoroTimeLeft = store.state.pomodoro.timeLeft; updatePomodoroDisplay();
     if(store.state.stopwatch.isRunning) { stopwatchTime = store.state.stopwatch.time; stopwatchStart(); }
 </script>
+    <!-- Franja inferior decorativa -->
+<div id="bottomStripe"></div>
 </body>
-    /* Franja inferior vino/verde oscuro */
-#bottomStripe {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 6px;
-    background: linear-gradient(90deg, var(--wine-medium), var(--forest-dark), var(--wine-dark));
-    z-index: 50;
-    opacity: 0.6;
-    pointer-events: none; /* No interfiere con clics */
-}
-</html>
+    
