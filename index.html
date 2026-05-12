@@ -9,10 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet">
-    
+
     <!-- Elfsight Platform -->
     <script src="https://elfsightcdn.com/platform.js" defer></script>
-    
+
     <style>
         /* ========== VARIABLES ========== */
         :root {
@@ -460,7 +460,7 @@
         /* ============================================ */
         /* === REPRODUCTOR DE MÚSICA INTEGRADO ====== */
         /* ============================================ */
-        
+
         /* Overlay oscuro cuando está expandido */
         #musicOverlay {
             display: none;
@@ -657,6 +657,7 @@
             border-top: 2px solid #2a5a3a;
         }
     </style>
+<base target="_blank">
 </head>
 <body>
 <div class="app-container">
@@ -729,7 +730,7 @@
             <circle cx="18" cy="16" r="3"></circle>
         </svg>
     </div>
-    
+
     <!-- Barra del reproductor (visible cuando está expandido) -->
     <div id="musicBar">
         <button id="musicCloseBtn" onclick="collapseMusic()">&times;</button>
@@ -806,4 +807,110 @@
         }
         saveState() { localStorage.setItem('productivity_suite', JSON.stringify(this.state)); this.listeners.forEach(l=>l(this.state)); }
         subscribe(l) { this.listeners.push(l); return ()=> this.listeners = this.listeners.filter(ll=>ll!==l); }
-        setState(updates) { this.state = { ...
+        setState(updates) { this.state = { ...this.state, ...updates }; this.saveState(); }
+        updateNotes(notes) { this.state.notes = notes; this.saveState(); }
+        updateTasks(tasks) { this.state.tasks = tasks; this.saveState(); }
+        updateSettings(settings) { this.state.settings = { ...this.state.settings, ...settings }; this.saveState(); }
+    }
+    const store = new Store();
+    if (Notification.permission !== 'granted' && store.state.settings.notifications) Notification.requestPermission();
+
+    // ------------------------ MODULES ------------------------
+    // Clock
+    function initClock() {
+        const update = () => {
+            const now = new Date();
+            document.getElementById('clockTime') && (document.getElementById('clockTime').textContent = now.toLocaleTimeString('es-ES'));
+            document.getElementById('clockDate') && (document.getElementById('clockDate').textContent = Utils.formatDate(now));
+            document.getElementById('globalTime') && (document.getElementById('globalTime').textContent = now.toLocaleTimeString('es-ES', { hour:'2-digit', minute:'2-digit' }));
+            document.getElementById('globalDate') && (document.getElementById('globalDate').textContent = now.toLocaleDateString('es-ES', { weekday:'short', month:'short', day:'numeric' }));
+        };
+        update(); setInterval(update, 1000);
+    }
+    // Stopwatch
+    let stopwatchInterval = null, stopwatchRunning = false, stopwatchTime = store.state.stopwatch.time;
+    function updateStopwatchDisplay() { const el = document.getElementById('stopwatchTime'); if(el) el.textContent = Utils.formatTime(stopwatchTime, true); }
+    function stopwatchStart() { if(stopwatchRunning) return; stopwatchRunning = true; const start = Date.now() - stopwatchTime * 1000; stopwatchInterval = setInterval(() => { stopwatchTime = (Date.now() - start) / 1000; updateStopwatchDisplay(); store.setState({ stopwatch: { time: stopwatchTime, isRunning: true } }); }, 10); }
+    function stopwatchPause() { clearInterval(stopwatchInterval); stopwatchRunning = false; store.setState({ stopwatch: { time: stopwatchTime, isRunning: false } }); }
+    function stopwatchReset() { stopwatchPause(); stopwatchTime = 0; updateStopwatchDisplay(); store.setState({ stopwatch: { time: 0, isRunning: false } }); }
+    // Timer (countdown)
+    let timerInterval = null, timerRunning = false, timerSeconds = 0;
+    function updateTimerDisplay() { const el = document.getElementById('timerTime'); if(el) { let m = Math.floor(timerSeconds/60), s = timerSeconds%60; el.textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; } }
+    function timerStart() { if(timerRunning || timerSeconds<=0) return; timerRunning = true; timerInterval = setInterval(() => { if(timerSeconds>0) { timerSeconds--; updateTimerDisplay(); } else { timerStop(); Utils.showNotification('¡Temporizador completado!','success'); Utils.playSound(); } }, 1000); }
+    function timerStop() { clearInterval(timerInterval); timerRunning = false; }
+    // Pomodoro
+    let pomodoroInterval = null, pomodoroRunning = false, pomodoroTimeLeft = store.state.pomodoro.timeLeft, pomodoroPhase = store.state.pomodoro.currentPhase, pomodoroFocus = store.state.pomodoro.focusDuration, pomodoroBreak = store.state.pomodoro.breakDuration;
+    function updatePomodoroDisplay() { const el = document.getElementById('pomodoroTime'); if(el) { let m = Math.floor(pomodoroTimeLeft/60), s = pomodoroTimeLeft%60; el.textContent = `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`; } document.getElementById('pomodoroPhase') && (document.getElementById('pomodoroPhase').textContent = pomodoroPhase === 'focus' ? 'Enfoque 🔥' : 'Descanso 🧘'); }
+    function pomodoroComplete() { pomodoroStop(); if(pomodoroPhase === 'focus') { pomodoroPhase = 'break'; pomodoroTimeLeft = pomodoroBreak * 60; Utils.showNotification('¡Descanso! Tiempo para relajarte','success'); Utils.playSound(); } else { pomodoroPhase = 'focus'; pomodoroTimeLeft = pomodoroFocus * 60; Utils.showNotification('¡Enfoque! Comienza tu sesión de trabajo','success'); Utils.playSound(); } updatePomodoroDisplay(); store.setState({ pomodoro: { focusDuration: pomodoroFocus, breakDuration: pomodoroBreak, currentPhase: pomodoroPhase, timeLeft: pomodoroTimeLeft } }); }
+    function pomodoroStart() { if(pomodoroRunning) return; pomodoroRunning = true; pomodoroInterval = setInterval(() => { if(pomodoroTimeLeft > 0) { pomodoroTimeLeft--; updatePomodoroDisplay(); store.setState({ pomodoro: { focusDuration: pomodoroFocus, breakDuration: pomodoroBreak, currentPhase: pomodoroPhase, timeLeft: pomodoroTimeLeft } }); } else { pomodoroComplete(); } }, 1000); }
+    function pomodoroStop() { clearInterval(pomodoroInterval); pomodoroRunning = false; }
+    function pomodoroReset() { pomodoroStop(); pomodoroTimeLeft = pomodoroPhase === 'focus' ? pomodoroFocus * 60 : pomodoroBreak * 60; updatePomodoroDisplay(); store.setState({ pomodoro: { focusDuration: pomodoroFocus, breakDuration: pomodoroBreak, currentPhase: pomodoroPhase, timeLeft: pomodoroTimeLeft } }); }
+    // Calculator (two instances: widget and full)
+    let calcValue = '0', calcPrev = null, calcOp = null, calcWait = false;
+    function updateCalcDisplay(displayId, value) { const el = document.getElementById(displayId); if(el) el.value = value; }
+    function handleCalcInput(val, displayId) {
+        if(val === 'C') { calcValue = '0'; calcPrev = null; calcOp = null; calcWait = false; updateCalcDisplay(displayId, calcValue); return; }
+        if(val === '=') { if(calcOp && calcPrev !== null) { let current = parseFloat(calcValue); let res; switch(calcOp) { case '+': res = calcPrev + current; break; case '-': res = calcPrev - current; break; case '*': res = calcPrev * current; break; case '/': res = calcPrev / current; break; } calcValue = res.toString(); calcOp = null; calcPrev = null; calcWait = true; updateCalcDisplay(displayId, calcValue); } return; }
+        if(['+','-','*','/'].includes(val)) { if(calcOp && !calcWait) { let current = parseFloat(calcValue); switch(calcOp) { case '+': calcPrev += current; break; case '-': calcPrev -= current; break; case '*': calcPrev *= current; break; case '/': calcPrev /= current; break; } calcValue = calcPrev.toString(); updateCalcDisplay(displayId, calcValue); } else { calcPrev = parseFloat(calcValue); } calcOp = val; calcWait = true; return; }
+        if(calcWait) { calcValue = val; calcWait = false; } else { calcValue = calcValue === '0' ? val : calcValue + val; } updateCalcDisplay(displayId, calcValue);
+    }
+    // Notes
+    let notesArray = store.state.notes;
+    function renderNotes() { const container = document.getElementById('notesContainer'); if(!container) return; if(notesArray.length===0) { container.innerHTML = '<div class="note-placeholder">No hay notas. Crea una nueva nota.</div>'; return; } container.innerHTML = notesArray.map(n => `<div class="note-item" data-id="${n.id}"><div><strong>${escapeHtml(n.title)}</strong><br><small>${new Date(n.createdAt).toLocaleDateString()}</small></div><button class="delete-note" data-id="${n.id}">🗑️</button></div>`).join(''); document.querySelectorAll('.delete-note').forEach(btn => { btn.onclick = (e) => { e.stopPropagation(); deleteNote(btn.dataset.id); }; }); document.querySelectorAll('.note-item').forEach(item => { item.onclick = () => editNote(item.dataset.id); }); }
+    function deleteNote(id) { if(confirm('¿Eliminar nota?')) { notesArray = notesArray.filter(n => n.id !== id); store.updateNotes(notesArray); renderNotes(); } }
+    function editNote(id) { const note = notesArray.find(n=>n.id===id); if(note) { const newContent = prompt('Editar contenido:', note.content); if(newContent !== null) { note.content = newContent; store.updateNotes(notesArray); renderNotes(); } } }
+    function createNewNote() { const title = prompt('Título de la nota:'); if(title) { notesArray.unshift({ id: Utils.generateId(), title, content: '', createdAt: new Date().toISOString() }); store.updateNotes(notesArray); renderNotes(); } }
+    function saveFullNotes() { const text = document.getElementById('fullNotes').value; localStorage.setItem('full_notes', text); Utils.showNotification('Notas guardadas','success'); }
+    function exportNotes() { const text = document.getElementById('fullNotes').value || localStorage.getItem('full_notes') || ''; const blob = new Blob([text], {type:'text/plain'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `notes_${new Date().toISOString().split('T')[0]}.txt`; a.click(); URL.revokeObjectURL(a.href); }
+    function loadFullNotes() { const saved = localStorage.getItem('full_notes'); if(saved && document.getElementById('fullNotes')) document.getElementById('fullNotes').value = saved; }
+    // Tasks
+    let tasksArray = store.state.tasks || [];
+    function renderTasks() { const container = document.getElementById('tasksList'); if(!container) return; if(tasksArray.length===0) { container.innerHTML = '<div class="task-placeholder">No hay tareas. Agrega una nueva tarea.</div>'; return; } container.innerHTML = tasksArray.map(t => `<div class="task-item" data-id="${t.id}"><input type="checkbox" class="task-checkbox" ${t.completed ? 'checked':''} data-id="${t.id}"><span class="task-text ${t.completed ? 'completed':''}">${escapeHtml(t.text)}</span><button class="delete-task" data-id="${t.id}">🗑️</button></div>`).join(''); document.querySelectorAll('.task-checkbox').forEach(cb => { cb.onchange = () => toggleTask(cb.dataset.id); }); document.querySelectorAll('.delete-task').forEach(btn => { btn.onclick = () => deleteTask(btn.dataset.id); }); updateTaskCounter(); }
+    function toggleTask(id) { const task = tasksArray.find(t=>t.id===id); if(task) { task.completed = !task.completed; store.updateTasks(tasksArray); renderTasks(); } }
+    function deleteTask(id) { tasksArray = tasksArray.filter(t=>t.id!==id); store.updateTasks(tasksArray); renderTasks(); }
+    function addTask() { const input = document.getElementById('newTaskInput'); const text = input.value.trim(); if(text) { tasksArray.push({ id: Utils.generateId(), text, completed: false, createdAt: new Date().toISOString() }); store.updateTasks(tasksArray); input.value = ''; renderTasks(); } }
+    function updateTaskCounter() { const total = tasksArray.length; const completed = tasksArray.filter(t=>t.completed).length; const pending = total - completed; document.getElementById('totalTasks') && (document.getElementById('totalTasks').textContent = total); document.getElementById('completedTasks') && (document.getElementById('completedTasks').textContent = completed); document.getElementById('pendingTasks') && (document.getElementById('pendingTasks').textContent = pending); }
+    // Settings & UI
+    let currentView = 'dashboard';
+    function switchView(view) { currentView = view; document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); document.getElementById(`${view}View`).classList.add('active'); document.querySelectorAll('.nav-item').forEach(nav=>nav.classList.remove('active')); const activeNav = Array.from(document.querySelectorAll('.nav-item')).find(n=>n.dataset.view===view); if(activeNav) activeNav.classList.add('active'); const titles = { dashboard:'Dashboard Ejecutivo', timer:'Control de Tiempo', tasks:'Gestión de Tareas', notes:'Bloc de Notas', calculator:'Calculadora', settings:'Configuración' }; document.getElementById('currentViewTitle').innerText = titles[view] || 'Productivity Suite'; localStorage.setItem('lastView', view); }
+    function loadSettings() { const s = store.state.settings; document.getElementById('draggableWidgets').checked = s.draggableWidgets; document.getElementById('focusMode').checked = s.focusMode; document.getElementById('notifications').checked = s.notifications; document.getElementById('sounds').checked = s.sounds; }
+    function initEventListeners() {
+        document.getElementById('stopwatchStart').onclick = stopwatchStart;
+        document.getElementById('stopwatchPause').onclick = stopwatchPause;
+        document.getElementById('stopwatchReset').onclick = stopwatchReset;
+        document.getElementById('timerStart').onclick = () => { const inp = document.getElementById('timerInput'); timerSeconds = parseInt(inp.value) || 0; updateTimerDisplay(); timerStart(); };
+        document.getElementById('timerStop').onclick = timerStop;
+        document.getElementById('pomodoroStart').onclick = pomodoroStart;
+        document.getElementById('pomodoroPause').onclick = pomodoroStop;
+        document.getElementById('pomodoroReset').onclick = pomodoroReset;
+        document.getElementById('newNoteBtn').onclick = createNewNote;
+        document.getElementById('addTaskBtn').onclick = addTask;
+        document.getElementById('saveNotesBtn').onclick = saveFullNotes;
+        document.getElementById('exportNotesBtn').onclick = exportNotes;
+        document.getElementById('quickSettingsBtn').onclick = () => switchView('settings');
+        document.getElementById('resetSettingsBtn').onclick = () => { if(confirm('Resetear todas las configuraciones?')) { localStorage.clear(); location.reload(); } };
+        document.querySelectorAll('.nav-item').forEach(nav => nav.addEventListener('click', () => switchView(nav.dataset.view)));
+        document.getElementById('draggableWidgets').onchange = (e) => store.updateSettings({ draggableWidgets: e.target.checked });
+        document.getElementById('focusMode').onchange = (e) => { store.updateSettings({ focusMode: e.target.checked }); if(e.target.checked) { const div = document.createElement('div'); div.className = 'focus-mode-overlay'; div.id='focusOverlay'; div.innerHTML = '<div style="text-align:center"><h2>Modo Enfoque</h2><button onclick="document.getElementById('focusOverlay').remove()">Salir</button></div>'; document.body.appendChild(div); } else { const ov = document.getElementById('focusOverlay'); if(ov) ov.remove(); } };
+        document.getElementById('notifications').onchange = (e) => store.updateSettings({ notifications: e.target.checked });
+        document.getElementById('sounds').onchange = (e) => store.updateSettings({ sounds: e.target.checked });
+        // Calculator widget buttons
+        document.querySelectorAll('.calc-btn[data-calc]').forEach(btn => btn.onclick = () => handleCalcInput(btn.dataset.calc, 'calcDisplay'));
+        document.querySelectorAll('.calc-btn[data-calc-full]').forEach(btn => btn.onclick = () => handleCalcInput(btn.dataset.calcFull, 'calcDisplayFull'));
+        // Timer detailed settings
+        const focusInput = document.getElementById('focusDuration'); const breakInput = document.getElementById('breakDuration');
+        if(focusInput) focusInput.onchange = (e) => { pomodoroFocus = parseInt(e.target.value); if(pomodoroPhase==='focus') { pomodoroTimeLeft = pomodoroFocus * 60; updatePomodoroDisplay(); store.setState({ pomodoro: { focusDuration: pomodoroFocus, breakDuration: pomodoroBreak, currentPhase: pomodoroPhase, timeLeft: pomodoroTimeLeft } }); } };
+        if(breakInput) breakInput.onchange = (e) => { pomodoroBreak = parseInt(e.target.value); if(pomodoroPhase==='break') { pomodoroTimeLeft = pomodoroBreak * 60; updatePomodoroDisplay(); store.setState({ pomodoro: { focusDuration: pomodoroFocus, breakDuration: pomodoroBreak, currentPhase: pomodoroPhase, timeLeft: pomodoroTimeLeft } }); } };
+        // keyboard shortcuts
+        document.addEventListener('keydown', (e) => { if(e.altKey) { if(e.key === '1') switchView('dashboard'); if(e.key === '2') switchView('timer'); if(e.key === '3') switchView('tasks'); if(e.key === '4') switchView('notes'); if(e.key === '5') switchView('calculator'); if(e.key === '6') switchView('settings'); } if((e.ctrlKey||e.metaKey) && e.key === 'k') { e.preventDefault(); const cmd = prompt('Comando rápido (dashboard, timer, tasks, notes, calculator, settings):'); if(cmd && ['dashboard','timer','tasks','notes','calculator','settings'].includes(cmd)) switchView(cmd); } });
+    }
+    function escapeHtml(str) { const div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+    // restore last view
+    const lastView = localStorage.getItem('lastView'); if(lastView && ['dashboard','timer','tasks','notes','calculator','settings'].includes(lastView)) switchView(lastView); else switchView('dashboard');
+    initClock(); updateStopwatchDisplay(); updatePomodoroDisplay(); updateTimerDisplay(); renderNotes(); renderTasks(); loadFullNotes(); loadSettings(); initEventListeners();
+    // load pomodoro stored values
+    pomodoroFocus = store.state.pomodoro.focusDuration; pomodoroBreak = store.state.pomodoro.breakDuration; pomodoroPhase = store.state.pomodoro.currentPhase; pomodoroTimeLeft = store.state.pomodoro.timeLeft; updatePomodoroDisplay();
+    if(store.state.stopwatch.isRunning) { stopwatchTime = store.state.stopwatch.time; stopwatchStart(); }
+</script>
+</body>
+    </html>
